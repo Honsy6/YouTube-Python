@@ -1,0 +1,103 @@
+"""需要下载aria2c.exe，并且把aria2c.exe放到与文件同个文件夹里。当然也可以直接用Python下载（在代码更改mode1，有标注的），如果你不嫌慢"""
+
+import requests
+import json
+import pprint
+import re
+import os
+import time
+
+"""选择模式，使用aria2c.exe下载请输入 1 ，使用Python下载请输入 0 。使用aria2下载需要在此文件同一文件夹下个 aria2c.exe （有这个就够了）。
+    select mode 1 than use aria2c.exe to download,select mode2 than use Python to download"""
+mode1 = 1
+"""选择模式，开启视频标题合成出错手动修正模式请输入 1 ，关闭视频标题合成出错手动修正模式请输入 0 。不清楚的话试试就知道了"""
+mode2 = 0
+
+url = input('请输入网址：')
+
+headers = {
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+    'Referer': 'https://www.youtube.com/',
+    'origin': 'https://www.youtube.com'
+}
+
+'''获取并解码网页源码'''
+print('正在获取网页源码')
+response = requests.get(url,headers)
+response = requests.utils.unquote(response.text)
+title = re.findall('''title="(.*?)"><''',response)[-3]
+title = title.replace('"',"'")
+title = title.replace('&quot;',"'")
+time.sleep(2)
+
+'''提取并整理包含视频网址的json数据'''
+response_find = re.findall('''>var ytInitialPlayerResponse = (.*?);</script><div''',response)[0]
+response_find = requests.utils.unquote(response_find)
+response_json = json.loads(response_find)
+
+'''提取Json数据中的视频网址'''
+print('正在提取视频及音频地址')
+video_url = response_json['streamingData']['adaptiveFormats'][0]['url']
+audio_url = response_json['streamingData']['adaptiveFormats'][-1]['url']
+qualityLabel = response_json['streamingData']['adaptiveFormats'][0]['qualityLabel']
+
+print('videoURL:',video_url)
+print('audioURL:',audio_url)
+print('title:',title)
+print('qualityLabel:',qualityLabel)
+
+write_content = f'{video_url}\n out=_video_.mp4\n referer=https://www.youtube.com/\n{audio_url}\n out=_audio_.mp3\n referer=https://www.youtube.com/'
+f = open('Download_list.txt','w')
+print(write_content,file=f)
+f.close()
+
+if mode1 == 1:
+    '''模式1: 调用aria2c.exe进行高速下载（批量下载）【虽然我用是没多快】
+        mode1: use aria2c.exe to download file(batch download)'''
+    def get_file_from_cmd1():
+        exe_path = f"{os.path.abspath('.')}\\aria2c.exe"
+        order = f'{exe_path} -s16 -x10 --input-file=Download_list.txt'
+        os.system(order)
+
+    if __name__ == '__main__':
+        start = time.time()
+        get_file_from_cmd1()
+        end = time.time()
+        print(f"Used time:{end-start:.2f}")
+        print('Successful download')
+
+elif mode1 == 2:
+    '''模式2: 用Python直接访问视频网址，保存视频数据
+        mode2: use Python to download file'''
+    print("Downloading......")
+    response_video = requests.get(video_url,headers).content
+    with open('_video_.mp4',mode='wb') as f :
+        f.write(response_video)
+    print("Successful download video")
+    resposne_audio = requests.get(audio_url,headers).content
+    with open('_audio_.mp3',mode="wb") as f :
+        f.write(resposne_audio)
+    print('Successful download audio')
+
+'''合成视频'''
+print('正在合成视频')
+os.system(f'ffmpeg.exe -i _video_.mp4 -i _audio_.mp3 -c copy "{title}.mp4"')
+print(f'视频合成完毕!   视频名为:{title}.mp4    清晰度为:{qualityLabel}')
+if mode2 == 1:
+    judge = input('请最后确认视频合成程序是否运行完全！基本上出错是因为标题带有特殊符号。\n运行完全请回车，如出错请输入任意内容后回车:')
+    while judge != '':
+        print('合成程序将重新运行\n--------')
+        title_judge = input(f'请判断此标题是否是你想要的标题,如果是,请回车,如不是,请直接输入你想要的标题后回车。(无需加后缀名)\n标题为:{title}\n请输入:')
+        if title_judge == '':
+            pass
+        else:
+            title = title_judge
+        os.system(f'ffmpeg.exe -i _video_.mp4 -i _audio_.mp3 -c copy "{title}.mp4"')
+        judge = input('请再次确认程序是否成功运行!基本上出错是因为标题带有特殊符号。\n如成功请回车，如仍然无法合成视频请输入任意内容再次运行合成程序:')
+elif mode2 == 0:
+    pass
+
+os.remove('_video_.mp4')
+os.remove('_audio_.mp3')
+os.remove('Download_list.txt')
+print('注:_video_.mp4与_audio_.mp3与Download_list.txt皆是程序运行的临时文件,如程序结束后仍未被删除可手动删除。\n程序已结束')
